@@ -1,4 +1,4 @@
-# SDN Topology Change Detector
+﻿# SDN Topology Change Detector
 
 **Real-Time Topology Monitoring & Change Detection using Ryu OpenFlow Controller + Mininet**
 
@@ -358,5 +358,3 @@ hard_timeout: 600 seconds (absolute max 10 min lifetime)
 3. Mininet Walkthrough - http://mininet.org/walkthrough/
 4. Open vSwitch Documentation - https://docs.openvswitch.org/
 5. "Software-Defined Networking: A Comprehensive Survey" - D. Kreutz et al., IEEE 2015
-#   S D N - T o p o l o g y - C h a n g e - D e t e c t o r  
- 

@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SDN Topology Change Detector</title>
+    <meta name="description" content="Real-time SDN topology monitoring and change detection dashboard.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script type="text/javascript" src="https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js"></script>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <div class="logo-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/>
+                    <line x1="12" y1="7.5" x2="5" y2="16.5"/><line x1="12" y1="7.5" x2="19" y2="16.5"/>
+                    <line x1="5" y1="19" x2="19" y2="19"/>
+                </svg>
+            </div>
+            <div>
+                <h1>SDN Topology Change Detector</h1>
+                <p class="subtitle">Ryu OpenFlow Controller + Mininet</p>
+            </div>
+        </div>
+        <div class="header-right">
+            <button class="btn-refresh" onclick="refreshAll()">Refresh</button>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <!-- Stats -->
+        <section class="stats-bar">
+            <div class="stat-card">
+                <div class="stat-card-icon nodes-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="4" y="4" width="16" height="16" rx="2"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="stat-card-value" id="switchCount">0</div>
+                    <div class="stat-card-label">Switches</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-icon edges-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 4l16 16M4 20L20 4"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="stat-card-value" id="linkCount">0</div>
+                    <div class="stat-card-label">Links</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-icon hosts-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"/><circle cx="4" cy="6" r="2"/><circle cx="20" cy="18" r="2"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="stat-card-value" id="hostCount">0</div>
+                    <div class="stat-card-label">Hosts</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-icon events-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="stat-card-value" id="eventCount">0</div>
+                    <div class="stat-card-label">Events</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Content Grid -->
+        <div class="content-grid">
+            <!-- Network Graph -->
+            <section class="graph-panel glass-card">
+                <div class="panel-header">
+                    <h2>Network Topology</h2>
+                    <div class="legend">
+                        <span class="legend-item"><span class="legend-dot" style="background:#6366f1"></span>Switch</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#22c55e"></span>Host</span>
+                        <span class="legend-item"><span class="legend-line" style="background:#3b82f6"></span>Link</span>
+                    </div>
+                </div>
+                <div id="networkGraph"></div>
+            </section>
+
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <!-- Flow Table Viewer -->
+                <div class="flow-panel glass-card">
+                    <div class="panel-header">
+                        <h2>Flow Tables</h2>
+                    </div>
+                    <div class="flow-content" id="flowContent">
+                        <div class="info-placeholder"><p>Loading flow data...</p></div>
+                    </div>
+                </div>
+
+                <!-- Event Feed -->
+                <div class="event-feed glass-card">
+                    <div class="panel-header">
+                        <h2>Topology Events</h2>
+                    </div>
+                    <div class="event-list" id="eventList">
+                        <div class="info-placeholder"><p>No events yet...</p></div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </main>
+
+    <script>
+        let network = null;
+        let nodesDataset = null;
+        let edgesDataset = null;
+
+        function initNetwork() {
+            const container = document.getElementById('networkGraph');
+            nodesDataset = new vis.DataSet([]);
+            edgesDataset = new vis.DataSet([]);
+            const options = {
+                physics: { enabled: true, solver: 'forceAtlas2Based',
+                    forceAtlas2Based: { gravitationalConstant: -80, springLength: 200, springConstant: 0.05, damping: 0.4 },
+                    stabilization: { enabled: true, iterations: 200 }
+                },
+                interaction: { hover: true, tooltipDelay: 200, zoomView: true, navigationButtons: true },
+                nodes: { borderWidth: 2, shadow: true, font: { color: '#e2e8f0', size: 14, face: 'Inter' } },
+                edges: { width: 3, smooth: { type: 'continuous', roundness: 0.3 }, shadow: true }
+            };
+            network = new vis.Network(container, { nodes: nodesDataset, edges: edgesDataset }, options);
+        }
+
+        async function loadTopology() {
+            try {
+                const resp = await fetch('/api/topology');
+                const data = await resp.json();
+
+                document.getElementById('switchCount').textContent = data.switch_count || 0;
+                document.getElementById('linkCount').textContent = data.link_count || 0;
+                document.getElementById('hostCount').textContent = data.host_count || 0;
+
+                // Build vis.js nodes
+                const visNodes = [];
+                (data.switches || []).forEach(sw => {
+                    visNodes.push({
+                        id: sw.dpid_str, label: sw.dpid_str,
+                        shape: 'box', size: 30,
+                        color: { background: '#6366f1', border: '#818cf8', highlight: { background: '#818cf8', border: '#a5b4fc' } },
+                        font: { color: '#fff' },
+                        title: `Switch: ${sw.dpid_str}\nDPID: ${sw.dpid}\nConnected: ${sw.connected_at}`
+                    });
+                });
+                (data.hosts || []).forEach(host => {
+                    visNodes.push({
+                        id: host.mac, label: host.ip || host.mac,
+                        shape: 'dot', size: 18,
+                        color: { background: '#22c55e', border: '#4ade80', highlight: { background: '#4ade80', border: '#86efac' } },
+                        font: { color: '#fff', size: 12 },
+                        title: `Host: ${host.ip}\nMAC: ${host.mac}\nSwitch: ${host.switch}\nPort: ${host.port}`
+                    });
+                });
+
+                // Build vis.js edges
+                const visEdges = [];
+                let edgeId = 0;
+                (data.links || []).forEach(link => {
+                    visEdges.push({
+                        id: `link-${edgeId++}`, from: link.src, to: link.dst,
+                        color: { color: '#3b82f6', highlight: '#60a5fa' }, width: 3,
+                        title: `${link.src}(port ${link.src_port}) <-> ${link.dst}(port ${link.dst_port})`
+                    });
+                });
+                (data.hosts || []).forEach(host => {
+                    visEdges.push({
+                        id: `host-${edgeId++}`, from: host.mac, to: host.switch,
+                        color: { color: '#4ade80', highlight: '#86efac' }, width: 1.5, dashes: true,
+                        title: `${host.ip} -> ${host.switch}(port ${host.port})`
+                    });
+                });
+
+                nodesDataset.clear(); nodesDataset.add(visNodes);
+                edgesDataset.clear(); edgesDataset.add(visEdges);
+            } catch (e) { console.error('Error loading topology:', e); }
+        }
+
+        async function loadEvents() {
+            try {
+                const resp = await fetch('/api/events');
+                const events = await resp.json();
+                const list = document.getElementById('eventList');
+
+                document.getElementById('eventCount').textContent = events.length || 0;
+
+                if (!events.length) { list.innerHTML = '<div class="info-placeholder"><p>No events yet...</p></div>'; return; }
+
+                list.innerHTML = '';
+                events.slice(0, 50).forEach(event => {
+                    const iconMap = { 'SWITCH_CONNECTED': '🟢', 'SWITCH_ENTER': '🟢', 'SWITCH_LEAVE': '🔴',
+                        'LINK_ADD': '🔵', 'LINK_DELETE': '🟠', 'HOST_DISCOVERED': '🟣', 'SYSTEM': '⚪' };
+                    const icon = iconMap[event.event_type] || '⚪';
+                    const time = event.timestamp ? event.timestamp.split(' ')[1] : '';
+                    const el = document.createElement('div');
+                    el.className = 'event-item';
+                    el.innerHTML = `<div class="event-header"><span class="event-icon">${icon}</span><span class="event-type">${event.event_type}</span><span class="event-time">${time}</span></div><div class="event-details">${event.details}</div>`;
+                    list.appendChild(el);
+                });
+            } catch (e) { console.error('Error loading events:', e); }
+        }
+
+        async function loadFlows() {
+            try {
+                const resp = await fetch('/api/flows');
+                const data = await resp.json();
+                const container = document.getElementById('flowContent');
+
+                if (data.error || !Object.keys(data).length) {
+                    container.innerHTML = '<div class="info-placeholder"><p>No flow data available yet. Run pingall first.</p></div>';
+                    return;
+                }
+
+                let html = '';
+                for (const [dpid, flows] of Object.entries(data)) {
+                    html += `<div class="flow-switch"><h3>Switch s${dpid}</h3>`;
+                    html += `<div class="flow-count">${flows.length} flow(s)</div>`;
+                    flows.forEach(flow => {
+                        html += `<div class="flow-entry">
+                            <div class="flow-row"><span class="flow-key">Priority:</span><span class="flow-val">${flow.priority}</span></div>
+                            <div class="flow-row"><span class="flow-key">Match:</span><span class="flow-val flow-mono">${flow.match}</span></div>
+                            <div class="flow-row"><span class="flow-key">Packets:</span><span class="flow-val">${flow.packet_count}</span></div>
+                            <div class="flow-row"><span class="flow-key">Bytes:</span><span class="flow-val">${flow.byte_count}</span></div>
+                            <div class="flow-row"><span class="flow-key">Timeouts:</span><span class="flow-val">idle=${flow.idle_timeout}s hard=${flow.hard_timeout}s</span></div>
+                        </div>`;
+                    });
+                    html += '</div>';
+                }
+                container.innerHTML = html;
+            } catch (e) { container.innerHTML = '<div class="info-placeholder"><p>Error loading flows</p></div>'; }
+        }
+
+        function refreshAll() {
+            loadTopology();
+            loadEvents();
+            loadFlows();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initNetwork();
+            refreshAll();
+            // Auto-refresh every 5 seconds
+            setInterval(refreshAll, 5000);
+        });
+    </script>
+</body>
+</html>
