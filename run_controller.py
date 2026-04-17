@@ -4,7 +4,7 @@ Launcher script for the SDN Topology Detector controller.
 Directly bootstraps the os_ken AppManager without needing osken-manager CLI.
 
 Usage:
-    python3 run_controller.py [--observe-links]
+    python3 run_controller.py
 """
 import sys
 import os
@@ -39,8 +39,7 @@ def main():
     app_lists = [app_module_name]
 
     # Add topology discovery module (equivalent to --observe-links)
-    if '--observe-links' in sys.argv or True:  # always enable for this project
-        app_lists.append('os_ken.topology.switches')
+    app_lists.append('os_ken.topology.switches')
 
     print("=" * 60)
     print("  SDN Topology Detector - Controller Launcher")
@@ -53,9 +52,13 @@ def main():
     services = []
 
     for app in app_mgr.instantiate_apps(**contexts):
-        t = app.start()
-        if t is not None:
-            services.append(t)
+        try:
+            t = app.start()
+            if t is not None:
+                services.append(t)
+        except RuntimeError:
+            # Thread already started during __init__, that's fine
+            pass
 
     try:
         hub.joinall(services)
