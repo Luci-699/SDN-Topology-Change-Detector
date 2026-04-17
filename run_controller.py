@@ -25,6 +25,13 @@ def load_app_module(app_path):
 
 
 def main():
+    # Initialize os_ken configuration FIRST (critical!)
+    from os_ken import cfg
+    try:
+        cfg.CONF(project='os_ken', version='1.0')
+    except SystemExit:
+        pass
+
     from os_ken.base.app_manager import AppManager
     from os_ken.lib import hub
 
@@ -33,9 +40,7 @@ def main():
                             'controller', 'topology_detector.py')
 
     # Load the controller app module
-    print("[DEBUG] Loading app module...")
     app_module_name = load_app_module(app_file)
-    print(f"[DEBUG] Loaded module: {app_module_name}")
 
     # Build list of apps to load
     app_lists = [app_module_name]
@@ -52,16 +57,11 @@ def main():
     print("=" * 60)
 
     app_mgr = AppManager.get_instance()
-    print("[DEBUG] Loading apps into manager...")
     app_mgr.load_apps(app_lists)
-
-    print(f"[DEBUG] Apps loaded. Creating contexts...")
     contexts = app_mgr.create_contexts()
     print(f"[DEBUG] Contexts: {list(contexts.keys())}")
 
     services = []
-    print("[DEBUG] Instantiating apps...")
-
     for app in app_mgr.instantiate_apps(**contexts):
         print(f"[DEBUG] Instantiated: {app.__class__.__name__}")
         try:
@@ -72,15 +72,12 @@ def main():
         except RuntimeError as e:
             print(f"[DEBUG] RuntimeError on {app.__class__.__name__}: {e}")
 
-    print(f"[DEBUG] Total services to join: {len(services)}")
-    print("[INFO] Controller is running. Waiting for switch connections...")
+    print(f"[INFO] Controller running with {len(services)} services. Waiting for switches...")
 
     try:
         if services:
             hub.joinall(services)
         else:
-            # Keep alive even if no greenlet services
-            print("[DEBUG] No greenlet services, entering keep-alive loop...")
             while True:
                 hub.sleep(1)
     except KeyboardInterrupt:
