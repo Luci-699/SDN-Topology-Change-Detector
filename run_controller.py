@@ -4,40 +4,22 @@ Launcher script for the SDN Topology Detector controller.
 """
 import sys
 import os
-import importlib.util
-import inspect
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-
-def load_app_module(app_path):
-    module_name = os.path.splitext(os.path.basename(app_path))[0]
-    spec = importlib.util.spec_from_file_location(module_name, app_path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module_name
+# Add project root to sys.path so 'controller.topology_detector' is importable
+project_root = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, project_root)
 
 
 def main():
-    from os_ken.base.app_manager import AppManager, OSKenApp
+    from os_ken.base.app_manager import AppManager
     from os_ken.lib import hub
 
-    # Load our app module
-    app_file = os.path.join(os.path.dirname(__file__),
-                            'controller', 'topology_detector.py')
-    app_module_name = load_app_module(app_file)
-
-    # Debug: check what classes are in our module
-    mod = sys.modules[app_module_name]
-    print(f"[DEBUG] Module name: {mod.__name__}")
-    for name, obj in inspect.getmembers(mod, inspect.isclass):
-        if issubclass(obj, OSKenApp):
-            print(f"[DEBUG] Found OSKenApp subclass: {name}, __module__={obj.__module__}")
-
-    app_lists = [app_module_name]
-    app_lists.append('os_ken.controller.ofp_handler')
-    app_lists.append('os_ken.topology.switches')
+    # Use proper module paths — no manual loading needed
+    app_lists = [
+        'controller.topology_detector',     # Our app
+        'os_ken.controller.ofp_handler',     # OpenFlow handler (port 6633)
+        'os_ken.topology.switches',          # Topology discovery (LLDP)
+    ]
 
     print("=" * 60)
     print("  SDN Topology Detector - Controller Launcher")
@@ -47,12 +29,7 @@ def main():
     app_mgr = AppManager.get_instance()
     app_mgr.load_apps(app_lists)
 
-    # Debug: what did load_apps find?
-    print(f"[DEBUG] Registered app classes: {list(app_mgr.applications_cls.keys())}")
-    for name, cls in app_mgr.applications_cls.items():
-        print(f"[DEBUG]   {name} -> {cls}")
-
-    # Parse config AFTER loading
+    # Parse config AFTER all modules register their CLI options
     from os_ken import cfg
     try:
         cfg.CONF(args=['--observe-links'], project='os_ken', version='1.0')
@@ -72,7 +49,7 @@ def main():
         except RuntimeError as e:
             print(f"[DEBUG] RuntimeError on {app.__class__.__name__}: {e}")
 
-    print(f"[INFO] Controller running with {len(services)} services.")
+    print(f"[INFO] Controller running with {len(services)} services. Waiting for switches...")
 
     try:
         if services:
