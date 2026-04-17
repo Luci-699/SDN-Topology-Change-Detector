@@ -37,7 +37,7 @@ TOPOLOGY_APP_NAME = 'topology_detector_api'
 LOG_FILE = 'logs/topology_events.log'
 
 
-class TopologyDetector(app_manager.RyuApp):
+class TopologyDetector(app_manager.OSKenApp):
     """
     Main Ryu application for SDN-based topology change detection.
 
