@@ -25,16 +25,8 @@ def load_app_module(app_path):
 
 
 def main():
-    # Import os_ken modules FIRST (they register CLI options during import)
     from os_ken.base.app_manager import AppManager
     from os_ken.lib import hub
-
-    # Now initialize config AFTER all imports have registered their options
-    from os_ken import cfg
-    try:
-        cfg.CONF(args=[], project='os_ken', version='1.0')
-    except SystemExit:
-        pass
 
     # The app to load
     app_file = os.path.join(os.path.dirname(__file__),
@@ -45,11 +37,7 @@ def main():
 
     # Build list of apps to load
     app_lists = [app_module_name]
-
-    # Add the OpenFlow handler (listens on port 6633 for switch connections)
     app_lists.append('os_ken.controller.ofp_handler')
-
-    # Add topology discovery module (equivalent to --observe-links)
     app_lists.append('os_ken.topology.switches')
 
     print("=" * 60)
@@ -58,7 +46,17 @@ def main():
     print("=" * 60)
 
     app_mgr = AppManager.get_instance()
+
+    # load_apps imports all modules (which register their CLI options)
     app_mgr.load_apps(app_lists)
+
+    # NOW parse config - after all CLI options have been registered
+    from os_ken import cfg
+    try:
+        cfg.CONF(args=['--observe-links'], project='os_ken', version='1.0')
+    except SystemExit:
+        pass
+
     contexts = app_mgr.create_contexts()
     print(f"[DEBUG] Contexts: {list(contexts.keys())}")
 
