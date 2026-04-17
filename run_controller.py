@@ -38,6 +38,9 @@ def main():
     # Build list of apps to load
     app_lists = [app_module_name]
 
+    # Add the OpenFlow handler (listens on port 6633 for switch connections)
+    app_lists.append('os_ken.controller.ofp_handler')
+
     # Add topology discovery module (equivalent to --observe-links)
     app_lists.append('os_ken.topology.switches')
 
