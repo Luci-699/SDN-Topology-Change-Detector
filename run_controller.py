@@ -42,9 +42,6 @@ def main():
     if '--observe-links' in sys.argv or True:  # always enable for this project
         app_lists.append('os_ken.topology.switches')
 
-    # Add WSGI service for REST API
-    app_lists.append('os_ken.app.ofctl_rest')
-
     print("=" * 60)
     print("  SDN Topology Detector - Controller Launcher")
     print(f"  Loading apps: {app_lists}")

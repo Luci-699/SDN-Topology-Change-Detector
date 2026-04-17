@@ -14,7 +14,10 @@ Usage:
 import json
 import time
 import logging
+import threading
 from datetime import datetime
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from functools import partial
 
 from os_ken.base import app_manager
 from os_ken.controller import ofp_event
@@ -25,8 +28,6 @@ from os_ken.lib.packet import packet, ethernet, ether_types, arp, ipv4
 from os_ken.lib import hub
 from os_ken.topology import event as topo_event
 from os_ken.topology.api import get_switch, get_link, get_host
-from os_ken.app.wsgi import ControllerBase, WSGIApplication, route
-from webob import Response
 
 
 # Name for the WSGI application
@@ -49,10 +50,6 @@ class TopologyDetector(app_manager.RyuApp):
 
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
 
-    _CONTEXTS = {
-        'wsgi': WSGIApplication,
-    }
-
     def __init__(self, *args, **kwargs):
         super(TopologyDetector, self).__init__(*args, **kwargs)
 
@@ -73,9 +70,8 @@ class TopologyDetector(app_manager.RyuApp):
         # Setup logger
         self._setup_logger()
 
-        # Register REST API
-        wsgi = kwargs['wsgi']
-        wsgi.register(TopologyDetectorAPI, {TOPOLOGY_APP_NAME: self})
+        # Start built-in REST API server on port 8080
+        self._start_rest_api(port=8080)
 
         # Start periodic stats collection
         self.monitor_thread = hub.spawn(self._monitor_loop)
@@ -547,52 +543,51 @@ class TopologyDetector(app_manager.RyuApp):
         return self.flow_stats
 
 
-class TopologyDetectorAPI(ControllerBase):
-    """
-    REST API controller for the Topology Detector.
+    def _start_rest_api(self, port=8080):
+        """Start a built-in HTTP REST API server in a background thread."""
+        app = self
 
-    Endpoints:
-        GET /topology     - Current switches, links, hosts
-        GET /events       - Recent topology change events
-        GET /flows        - All flow tables
-        GET /flows/<dpid> - Flow table for specific switch
-    """
+        class APIHandler(BaseHTTPRequestHandler):
+            """Simple REST API handler for topology data."""
 
-    def __init__(self, req, link, data, **config):
-        super(TopologyDetectorAPI, self).__init__(req, link, data, **config)
-        self.app = data[TOPOLOGY_APP_NAME]
+            def do_GET(self):
+                path = self.path.rstrip('/')
 
-    @route('topology', '/topology', methods=['GET'])
-    def get_topology(self, req, **kwargs):
-        """Return current network topology."""
-        data = self.app.get_topology_data()
-        body = json.dumps(data, indent=2)
-        return Response(content_type='application/json', body=body)
+                if path == '/topology':
+                    data = app.get_topology_data()
+                elif path == '/events':
+                    data = app.get_events_data()
+                elif path == '/flows':
+                    raw = app.get_flow_data()
+                    data = {str(k): v for k, v in raw.items()}
+                elif path.startswith('/flows/'):
+                    dpid_str = path.split('/flows/')[-1]
+                    try:
+                        dpid_int = int(dpid_str)
+                    except ValueError:
+                        dpid_int = int(dpid_str, 16)
+                    data = app.get_flow_data(dpid_int)
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+                    self.wfile.write(b'{"error": "not found"}')
+                    return
 
-    @route('events', '/events', methods=['GET'])
-    def get_events(self, req, **kwargs):
-        """Return recent topology change events."""
-        data = self.app.get_events_data()
-        body = json.dumps(data, indent=2)
-        return Response(content_type='application/json', body=body)
+                body = json.dumps(data, indent=2)
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(body.encode())
 
-    @route('flows', '/flows', methods=['GET'])
-    def get_all_flows(self, req, **kwargs):
-        """Return flow tables for all switches."""
-        data = self.app.get_flow_data()
-        # Convert dpid keys to strings for JSON
-        str_data = {str(k): v for k, v in data.items()}
-        body = json.dumps(str_data, indent=2)
-        return Response(content_type='application/json', body=body)
+            def log_message(self, format, *args):
+                # Suppress default HTTP server logs
+                pass
 
-    @route('flows_dpid', '/flows/{dpid}', methods=['GET'])
-    def get_switch_flows(self, req, dpid, **kwargs):
-        """Return flow table for a specific switch."""
-        try:
-            dpid_int = int(dpid)
-        except ValueError:
-            dpid_int = int(dpid, 16)
+        def run_server():
+            server = HTTPServer(('0.0.0.0', port), APIHandler)
+            app.logger.info(f"REST API server started on port {port}")
+            server.serve_forever()
 
-        data = self.app.get_flow_data(dpid_int)
-        body = json.dumps(data, indent=2)
-        return Response(content_type='application/json', body=body)
+        t = threading.Thread(target=run_server, daemon=True)
+        t.start()
