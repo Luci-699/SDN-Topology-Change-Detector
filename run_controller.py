@@ -1,36 +1,54 @@
 #!/usr/bin/env python3
 """
 Launcher script for the SDN Topology Detector controller.
-Replaces 'ryu-manager' / 'osken-manager' which may not be available
-in newer os-ken versions.
+Directly bootstraps the os_ken AppManager without needing osken-manager CLI.
 
 Usage:
-    python3 run_controller.py controller/topology_detector.py --observe-links --verbose
+    python3 run_controller.py [--observe-links]
 """
 import sys
 import os
+import importlib.util
 
+# Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Try os_ken.cmd.manager first (some versions have it)
-try:
-    from os_ken.cmd.manager import main
-    main()
-except ImportError:
-    # Fallback: manually bootstrap the app manager
-    from os_ken import cfg
+
+def load_app_module(app_path):
+    """Load a Python module from a file path."""
+    module_name = os.path.splitext(os.path.basename(app_path))[0]
+    spec = importlib.util.spec_from_file_location(module_name, app_path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module_name
+
+
+def main():
     from os_ken.base.app_manager import AppManager
-    from os_ken.topology import switches  # needed for --observe-links
+    from os_ken.lib import hub
 
-    CONF = cfg.CONF
-    CONF(sys.argv[1:])
+    # The app to load
+    app_file = os.path.join(os.path.dirname(__file__),
+                            'controller', 'topology_detector.py')
 
-    app_lists = CONF.app_lists + CONF.app
-    # Always include topology switches module for --observe-links
-    if '--observe-links' in sys.argv:
-        topo_module = 'os_ken.topology.switches'
-        if topo_module not in app_lists:
-            app_lists.append(topo_module)
+    # Load the controller app module
+    app_module_name = load_app_module(app_file)
+
+    # Build list of apps to load
+    app_lists = [app_module_name]
+
+    # Add topology discovery module (equivalent to --observe-links)
+    if '--observe-links' in sys.argv or True:  # always enable for this project
+        app_lists.append('os_ken.topology.switches')
+
+    # Add WSGI service for REST API
+    app_lists.append('os_ken.app.ofctl_rest')
+
+    print("=" * 60)
+    print("  SDN Topology Detector - Controller Launcher")
+    print(f"  Loading apps: {app_lists}")
+    print("=" * 60)
 
     app_mgr = AppManager.get_instance()
     app_mgr.load_apps(app_lists)
@@ -43,7 +61,10 @@ except ImportError:
             services.append(t)
 
     try:
-        from os_ken.lib import hub
         hub.joinall(services)
     except KeyboardInterrupt:
         print("\nController stopped.")
+
+
+if __name__ == '__main__':
+    main()
