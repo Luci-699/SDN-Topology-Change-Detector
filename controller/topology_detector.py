@@ -16,16 +16,16 @@ import time
 import logging
 from datetime import datetime
 
-from ryu.base import app_manager
-from ryu.controller import ofp_event
-from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
-from ryu.controller.handler import set_ev_cls
-from ryu.ofproto import ofproto_v1_3
-from ryu.lib.packet import packet, ethernet, ether_types, arp, ipv4
-from ryu.lib import hub
-from ryu.topology import event as topo_event
-from ryu.topology.api import get_switch, get_link, get_host
-from ryu.app.wsgi import ControllerBase, WSGIApplication, route
+from os_ken.base import app_manager
+from os_ken.controller import ofp_event
+from os_ken.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
+from os_ken.controller.handler import set_ev_cls
+from os_ken.ofproto import ofproto_v1_3
+from os_ken.lib.packet import packet, ethernet, ether_types, arp, ipv4
+from os_ken.lib import hub
+from os_ken.topology import event as topo_event
+from os_ken.topology.api import get_switch, get_link, get_host
+from os_ken.app.wsgi import ControllerBase, WSGIApplication, route
 from webob import Response
 
 
