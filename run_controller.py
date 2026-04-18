@@ -66,7 +66,8 @@ def main():
     print("[INFO] Controller running on port 6633. Waiting for switches...")
 
     try:
-        hub.joinall(services)
+        while True:
+            hub.sleep(1)
     except KeyboardInterrupt:
         print("\nController stopped.")
 
