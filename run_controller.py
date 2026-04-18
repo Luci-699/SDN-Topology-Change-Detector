@@ -33,7 +33,8 @@ def main():
 
     from os_ken import cfg
     try:
-        cfg.CONF(args=['--observe-links'], project='os_ken', version='1.0')
+        cfg.CONF(args=['--observe-links', '--ofp-tcp-listen-port=6633'],
+                 project='os_ken', version='1.0')
     except SystemExit:
         pass
 
