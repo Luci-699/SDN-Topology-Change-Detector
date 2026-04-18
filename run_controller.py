@@ -8,7 +8,6 @@ Usage:
 import sys
 import os
 
-# Eventlet monkey-patch MUST happen before any other imports
 import eventlet
 eventlet.monkey_patch()
 
@@ -41,33 +40,17 @@ def main():
         pass
 
     contexts = app_mgr.create_contexts()
-    services = []
 
-    # instantiate_apps creates apps and registers event observers
-    for app in app_mgr.instantiate_apps(**contexts):
-        try:
-            t = app.start()
-            if t is not None:
-                services.append(t)
-        except RuntimeError:
-            pass
-
-    # Ensure all registered apps are started
-    for app_name, app in app_mgr.applications.items():
-        try:
-            t = app.start()
-            if t is not None:
-                services.append(t)
-        except RuntimeError:
-            pass
+    # instantiate_apps creates, registers, and STARTS all apps
+    # It returns a list of service THREADS (not apps!)
+    services = app_mgr.instantiate_apps(**contexts)
 
     print(f"[INFO] Apps: {list(app_mgr.applications.keys())}")
     print(f"[INFO] Services: {len(services)}")
     print("[INFO] Controller running on port 6633. Waiting for switches...")
 
     try:
-        while True:
-            hub.sleep(1)
+        hub.joinall(services)
     except KeyboardInterrupt:
         print("\nController stopped.")
 
