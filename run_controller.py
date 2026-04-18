@@ -8,9 +8,6 @@ Usage:
 import sys
 import os
 
-import eventlet
-eventlet.monkey_patch()
-
 project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_root)
 
@@ -41,8 +38,8 @@ def main():
 
     contexts = app_mgr.create_contexts()
 
-    # instantiate_apps creates, registers, and STARTS all apps
-    # It returns a list of service THREADS (not apps!)
+    # instantiate_apps creates, wires up observers, starts all apps,
+    # and returns a list of service threads
     services = app_mgr.instantiate_apps(**contexts)
 
     print(f"[INFO] Apps: {list(app_mgr.applications.keys())}")
