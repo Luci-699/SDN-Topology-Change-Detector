@@ -8,25 +8,15 @@ Usage:
 import sys
 import os
 
+# Eventlet monkey-patch MUST happen before any other imports
+import eventlet
+eventlet.monkey_patch()
+
 project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_root)
 
-# Set sys.argv for oslo.config parsing
-sys.argv = [sys.argv[0], '--observe-links']
-
 
 def main():
-    # Register the 'app' positional CLI argument that ryu-manager used
-    from oslo_config import cfg as oslo_cfg
-    from os_ken import cfg
-
-    cfg.CONF.register_cli_opts([
-        oslo_cfg.MultiOpt('app', positional=True, default=[],
-                          help='application module name to run'),
-        oslo_cfg.ListOpt('app-lists', default=[],
-                         help='application module name to run'),
-    ])
-
     from os_ken.base.app_manager import AppManager
     from os_ken.lib import hub
 
@@ -43,12 +33,17 @@ def main():
     app_mgr = AppManager.get_instance()
     app_mgr.load_apps(app_lists)
 
-    # Parse config with --observe-links
-    cfg.CONF(args=['--observe-links'], project='os_ken', version='1.0')
+    # Parse config AFTER all modules register CLI options
+    from os_ken import cfg
+    try:
+        cfg.CONF(args=['--observe-links'], project='os_ken', version='1.0')
+    except SystemExit:
+        pass
 
     contexts = app_mgr.create_contexts()
     services = []
 
+    # instantiate_apps creates apps and registers event observers
     for app in app_mgr.instantiate_apps(**contexts):
         t = app.start()
         if t is not None:
@@ -61,7 +56,7 @@ def main():
             if t is not None:
                 services.append(t)
         except RuntimeError:
-            pass  # Already started
+            pass
 
     print(f"[INFO] Apps: {list(app_mgr.applications.keys())}")
     print(f"[INFO] Services: {len(services)}")
