@@ -25,7 +25,6 @@ def main():
     app_lists = [
         'controller.topology_detector',
         'os_ken.controller.ofp_handler',
-        'os_ken.topology.switches',
     ]
 
     print("=" * 60)
@@ -37,7 +36,7 @@ def main():
 
     from os_ken import cfg
     try:
-        cfg.CONF(args=['--observe-links', '--ofp-tcp-listen-port=6633'],
+        cfg.CONF(args=['--ofp-tcp-listen-port=6633'],
                  project='os_ken', version='1.0')
     except SystemExit:
         pass
