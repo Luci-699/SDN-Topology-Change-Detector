@@ -11,8 +11,22 @@ import os
 project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_root)
 
+# Set sys.argv for oslo.config parsing
+sys.argv = [sys.argv[0], '--observe-links']
+
 
 def main():
+    # Register the 'app' positional CLI argument that ryu-manager used
+    from oslo_config import cfg as oslo_cfg
+    from os_ken import cfg
+
+    cfg.CONF.register_cli_opts([
+        oslo_cfg.MultiOpt('app', positional=True, default=[],
+                          help='application module name to run'),
+        oslo_cfg.ListOpt('app-lists', default=[],
+                         help='application module name to run'),
+    ])
+
     from os_ken.base.app_manager import AppManager
     from os_ken.lib import hub
 
@@ -29,40 +43,32 @@ def main():
     app_mgr = AppManager.get_instance()
     app_mgr.load_apps(app_lists)
 
-    # Parse config AFTER all modules register CLI options
-    from os_ken import cfg
-    try:
-        cfg.CONF(args=['--observe-links'], project='os_ken', version='1.0')
-    except SystemExit:
-        pass
+    # Parse config with --observe-links
+    cfg.CONF(args=['--observe-links'], project='os_ken', version='1.0')
 
     contexts = app_mgr.create_contexts()
-
-    # Let instantiate_apps create and register the apps
-    for app in app_mgr.instantiate_apps(**contexts):
-        pass  # Apps are registered internally
-
-    # Now manually start ALL registered apps
     services = []
+
+    for app in app_mgr.instantiate_apps(**contexts):
+        t = app.start()
+        if t is not None:
+            services.append(t)
+
+    # Ensure all registered apps are started
     for app_name, app in app_mgr.applications.items():
-        print(f"[INFO] Starting app: {app_name} ({app.__class__.__name__})")
         try:
             t = app.start()
             if t is not None:
                 services.append(t)
-                print(f"[INFO]   -> started with service thread")
-        except RuntimeError as e:
-            print(f"[INFO]   -> already running ({e})")
+        except RuntimeError:
+            pass  # Already started
 
-    print(f"\n[INFO] Controller running with {len(services)} services.")
-    print("[INFO] Waiting for switches on port 6633...")
+    print(f"[INFO] Apps: {list(app_mgr.applications.keys())}")
+    print(f"[INFO] Services: {len(services)}")
+    print("[INFO] Controller running on port 6633. Waiting for switches...")
 
     try:
-        if services:
-            hub.joinall(services)
-        else:
-            while True:
-                hub.sleep(1)
+        hub.joinall(services)
     except KeyboardInterrupt:
         print("\nController stopped.")
 
