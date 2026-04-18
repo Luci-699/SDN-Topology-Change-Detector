@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
 Launcher script for the SDN Topology Detector controller.
-
-Usage:
-    python3 run_controller.py
 """
 import sys
 import os
+import warnings
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+
+import eventlet
+eventlet.monkey_patch()
 
 project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_root)
@@ -29,7 +31,6 @@ def main():
     app_mgr = AppManager.get_instance()
     app_mgr.load_apps(app_lists)
 
-    # Parse config AFTER all modules register CLI options
     from os_ken import cfg
     try:
         cfg.CONF(args=['--observe-links'], project='os_ken', version='1.0')
@@ -37,19 +38,34 @@ def main():
         pass
 
     contexts = app_mgr.create_contexts()
-
-    # instantiate_apps creates, wires up observers, starts all apps,
-    # and returns a list of service threads
     services = app_mgr.instantiate_apps(**contexts)
 
     print(f"[INFO] Apps: {list(app_mgr.applications.keys())}")
     print(f"[INFO] Services: {len(services)}")
-    print("[INFO] Controller running on port 6633. Waiting for switches...")
+
+    # Check if any service died immediately
+    for i, s in enumerate(services):
+        if hasattr(s, 'dead') and s.dead:
+            print(f"[ERROR] Service {i} is already dead!")
+            try:
+                s.wait()
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+
+    print("[INFO] Controller running on port 6633...")
 
     try:
         hub.joinall(services)
+        print("[WARN] All services exited! Checking errors...")
+        for i, s in enumerate(services):
+            try:
+                s.wait()
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
     except KeyboardInterrupt:
-        print("\nController stopped.")
+        print("\nStopped.")
 
 
 if __name__ == '__main__':
