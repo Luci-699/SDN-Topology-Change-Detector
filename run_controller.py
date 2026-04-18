@@ -41,7 +41,7 @@ def main():
 
     # Configure port
     try:
-        cfg.CONF(args=['--observe-links', '--ofp-tcp-listen-port=6633'],
+        cfg.CONF(args=['--ofp-tcp-listen-port=6633'],
                  project='os_ken', version='1.0')
     except SystemExit:
         pass
