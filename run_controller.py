@@ -14,6 +14,10 @@ project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_root)
 
 
+import logging
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s %(name)s %(levelname)s %(message)s')
+
 def main():
     from os_ken.base.app_manager import AppManager
     from os_ken.lib import hub
