@@ -149,38 +149,40 @@ class TopologyDetector(app_manager.OSKenApp):
            unmatched packets to the controller via OFPP_CONTROLLER.
         2. This is the foundation of reactive flow installation.
         """
-        datapath = ev.msg.datapath
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-        dpid = datapath.id
+        try:
+            datapath = ev.msg.datapath
+            ofproto = datapath.ofproto
+            parser = datapath.ofproto_parser
+            dpid = datapath.id
 
-        self.logger.info(f"Switch connected: dpid={dpid:#018x}")
+            self.logger.info(f"Switch connected: dpid={dpid}")
 
-        # Install table-miss flow entry
-        # Match: wildcard (matches everything)
-        # Action: send to controller (OFPP_CONTROLLER)
-        # Priority: 0 (lowest - only triggers if no other rule matches)
-        match = parser.OFPMatch()
-        actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
-                                          ofproto.OFPCML_NO_BUFFER)]
-        self._add_flow(datapath, priority=0, match=match, actions=actions,
-                       idle_timeout=0, hard_timeout=0)
+            # Install table-miss flow entry
+            match = parser.OFPMatch()
+            actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
+                                              ofproto.OFPCML_NO_BUFFER)]
+            self._add_flow(datapath, priority=0, match=match, actions=actions,
+                           idle_timeout=0, hard_timeout=0)
 
-        # Initialize MAC table for this switch
-        self.mac_to_port.setdefault(dpid, {})
+            # Initialize MAC table for this switch
+            self.mac_to_port.setdefault(dpid, {})
 
-        # Record switch
-        self.switches[dpid] = {
-            'dpid': dpid,
-            'dpid_str': f"{dpid:#018x}",
-            'connected_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        }
+            # Record switch
+            self.switches[dpid] = {
+                'dpid': dpid,
+                'dpid_str': f"{dpid}" if dpid else "unknown",
+                'connected_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            }
 
-        self._log_event(
-            "SWITCH_CONNECTED",
-            f"Switch s{dpid} (dpid={dpid:#018x}) connected to controller",
-            dpid=dpid,
-        )
+            self._log_event(
+                "SWITCH_CONNECTED",
+                f"Switch s{dpid} connected to controller",
+                dpid=dpid,
+            )
+        except Exception as e:
+            self.logger.error(f"switch_features_handler CRASH: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
 
     # =========================================================================
     # OpenFlow: Packet-In Handler (MAC Learning Switch)
