@@ -37,17 +37,25 @@ def main():
         pass
 
     contexts = app_mgr.create_contexts()
-    services = []
 
+    # Let instantiate_apps create and register the apps
     for app in app_mgr.instantiate_apps(**contexts):
+        pass  # Apps are registered internally
+
+    # Now manually start ALL registered apps
+    services = []
+    for app_name, app in app_mgr.applications.items():
+        print(f"[INFO] Starting app: {app_name} ({app.__class__.__name__})")
         try:
             t = app.start()
             if t is not None:
                 services.append(t)
-        except RuntimeError:
-            pass
+                print(f"[INFO]   -> started with service thread")
+        except RuntimeError as e:
+            print(f"[INFO]   -> already running ({e})")
 
-    print("[INFO] Controller running. Waiting for switches on port 6633...")
+    print(f"\n[INFO] Controller running with {len(services)} services.")
+    print("[INFO] Waiting for switches on port 6633...")
 
     try:
         if services:
