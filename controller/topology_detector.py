@@ -586,6 +586,7 @@ class TopologyDetector(app_manager.OSKenApp):
 
         def run_server():
             server = HTTPServer(('0.0.0.0', port), APIHandler)
+            server.allow_reuse_address = True
             app.logger.info(f"REST API server started on port {port}")
             server.serve_forever()
 
