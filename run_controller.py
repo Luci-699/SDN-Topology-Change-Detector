@@ -40,18 +40,19 @@ def main():
     contexts = app_mgr.create_contexts()
     services = app_mgr.instantiate_apps(**contexts)
 
-    print(f"[INFO] Apps: {list(app_mgr.applications.keys())}")
-    print(f"[INFO] Services: {len(services)}")
+    # Diagnostic: check event system wiring
+    from os_ken.base.app_manager import SERVICE_BRICKS
+    print(f"[DEBUG] SERVICE_BRICKS: {list(SERVICE_BRICKS.keys())}")
+    print(f"[DEBUG] Apps: {list(app_mgr.applications.keys())}")
+    print(f"[DEBUG] Services: {len(services)}")
 
-    # Check if any service died immediately
-    for i, s in enumerate(services):
-        if hasattr(s, 'dead') and s.dead:
-            print(f"[ERROR] Service {i} is already dead!")
-            try:
-                s.wait()
-            except Exception as e:
-                import traceback
-                traceback.print_exc()
+    # Check observer registration on each app
+    for name, app in app_mgr.applications.items():
+        observers = getattr(app, 'observers', {})
+        events = getattr(app, '_events', [])
+        print(f"[DEBUG] {name}: observers={len(observers)}, events={len(events)}")
+        for ev_cls, obs in observers.items():
+            print(f"[DEBUG]   observing {ev_cls.__name__}: {obs}")
 
     print("[INFO] Controller running on port 6633...")
 
