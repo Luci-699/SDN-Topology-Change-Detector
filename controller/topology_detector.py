@@ -15,7 +15,6 @@ import json
 import time
 import logging
 from datetime import datetime
-from http.server import HTTPServer, BaseHTTPRequestHandler
 from functools import partial
 
 from os_ken.base import app_manager
@@ -549,46 +548,42 @@ class TopologyDetector(app_manager.OSKenApp):
 
 
     def _run_rest_api(self, port):
-        """Run REST API server as an eventlet-compatible green thread."""
-        app = self
+        """Run REST API server using eventlet WSGI (fully green-compatible)."""
+        import eventlet
+        from eventlet import wsgi
 
-        class APIHandler(BaseHTTPRequestHandler):
-            """Simple REST API handler for topology data."""
+        app_ref = self
 
-            def do_GET(self):
-                path = self.path.rstrip('/')
+        def wsgi_app(environ, start_response):
+            path = environ.get('PATH_INFO', '/').rstrip('/')
 
-                if path == '/topology':
-                    data = app.get_topology_data()
-                elif path == '/events':
-                    data = app.get_events_data()
-                elif path == '/flows':
-                    raw = app.get_flow_data()
-                    data = {str(k): v for k, v in raw.items()}
-                elif path.startswith('/flows/'):
-                    dpid_str = path.split('/flows/')[-1]
-                    try:
-                        dpid_int = int(dpid_str)
-                    except ValueError:
-                        dpid_int = int(dpid_str, 16)
-                    data = app.get_flow_data(dpid_int)
-                else:
-                    self.send_response(404)
-                    self.end_headers()
-                    self.wfile.write(b'{"error": "not found"}')
-                    return
+            if path == '/topology':
+                data = app_ref.get_topology_data()
+            elif path == '/events':
+                data = app_ref.get_events_data()
+            elif path == '/flows':
+                raw = app_ref.get_flow_data()
+                data = {str(k): v for k, v in raw.items()}
+            elif path.startswith('/flows/'):
+                dpid_str = path.split('/flows/')[-1]
+                try:
+                    dpid_int = int(dpid_str)
+                except ValueError:
+                    dpid_int = int(dpid_str, 16)
+                data = app_ref.get_flow_data(dpid_int)
+            else:
+                start_response('404 Not Found',
+                               [('Content-Type', 'application/json')])
+                return [b'{"error": "not found"}']
 
-                body = json.dumps(data, indent=2)
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                self.wfile.write(body.encode())
+            body = json.dumps(data, indent=2).encode()
+            start_response('200 OK', [
+                ('Content-Type', 'application/json'),
+                ('Access-Control-Allow-Origin', '*'),
+            ])
+            return [body]
 
-            def log_message(self, format, *args):
-                pass
-
-        server = HTTPServer(('0.0.0.0', port), APIHandler)
-        server.allow_reuse_address = True
+        sock = eventlet.listen(('0.0.0.0', port), reuse_addr=True)
         self.logger.info(f"REST API server started on port {port}")
-        server.serve_forever()
+        wsgi.server(sock, wsgi_app, log_output=False)
+
