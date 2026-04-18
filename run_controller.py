@@ -22,14 +22,14 @@ def main():
     from os_ken.base.app_manager import AppManager
     from os_ken.lib import hub
 
-    # Use minimal switch first to test connectivity
     app_lists = [
-        'controller.simple_switch',
+        'controller.topology_detector',
         'os_ken.controller.ofp_handler',
+        'os_ken.topology.switches',
     ]
 
     print("=" * 60)
-    print("  SDN Controller - Testing with Simple Switch")
+    print("  SDN Topology Detector - Controller Launcher")
     print("=" * 60)
 
     app_mgr = AppManager.get_instance()
@@ -37,7 +37,7 @@ def main():
 
     from os_ken import cfg
     try:
-        cfg.CONF(args=['--ofp-tcp-listen-port=6633'],
+        cfg.CONF(args=['--observe-links', '--ofp-tcp-listen-port=6633'],
                  project='os_ken', version='1.0')
     except SystemExit:
         pass

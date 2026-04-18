@@ -14,7 +14,6 @@ Usage:
 import json
 import time
 import logging
-import threading
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from functools import partial
@@ -70,11 +69,15 @@ class TopologyDetector(app_manager.OSKenApp):
         # Setup logger
         self._setup_logger()
 
-        # Start built-in REST API server on port 8080
-        self._start_rest_api(port=8080)
+        self.logger.info("=== Topology Detector Controller Initialized ===")
 
-        # Start periodic stats collection
-        self.monitor_thread = hub.spawn(self._monitor_loop)
+    def start(self):
+        """Start the app: spawn event loop, REST API, and monitor."""
+        super(TopologyDetector, self).start()
+
+        # Start REST API and monitor as green threads (NOT threading.Thread)
+        hub.spawn(self._run_rest_api, 8080)
+        hub.spawn(self._monitor_loop)
 
         self._log_event("SYSTEM", "Topology Detector controller started")
         self.logger.info("=== Topology Detector Controller Started ===")
@@ -545,8 +548,8 @@ class TopologyDetector(app_manager.OSKenApp):
         return self.flow_stats
 
 
-    def _start_rest_api(self, port=8080):
-        """Start a built-in HTTP REST API server in a background thread."""
+    def _run_rest_api(self, port):
+        """Run REST API server as an eventlet-compatible green thread."""
         app = self
 
         class APIHandler(BaseHTTPRequestHandler):
@@ -583,14 +586,9 @@ class TopologyDetector(app_manager.OSKenApp):
                 self.wfile.write(body.encode())
 
             def log_message(self, format, *args):
-                # Suppress default HTTP server logs
                 pass
 
-        def run_server():
-            server = HTTPServer(('0.0.0.0', port), APIHandler)
-            server.allow_reuse_address = True
-            app.logger.info(f"REST API server started on port {port}")
-            server.serve_forever()
-
-        t = threading.Thread(target=run_server, daemon=True)
-        t.start()
+        server = HTTPServer(('0.0.0.0', port), APIHandler)
+        server.allow_reuse_address = True
+        self.logger.info(f"REST API server started on port {port}")
+        server.serve_forever()
