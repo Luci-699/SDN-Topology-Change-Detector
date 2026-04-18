@@ -45,9 +45,12 @@ def main():
 
     # instantiate_apps creates apps and registers event observers
     for app in app_mgr.instantiate_apps(**contexts):
-        t = app.start()
-        if t is not None:
-            services.append(t)
+        try:
+            t = app.start()
+            if t is not None:
+                services.append(t)
+        except RuntimeError:
+            pass
 
     # Ensure all registered apps are started
     for app_name, app in app_mgr.applications.items():
