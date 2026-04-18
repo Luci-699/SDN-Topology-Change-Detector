@@ -71,12 +71,11 @@ class TopologyDetector(app_manager.OSKenApp):
         self.logger.info("=== Topology Detector Controller Initialized ===")
 
     def start(self):
-        """Start the app: spawn event loop, REST API, and monitor."""
+        """Start the app: spawn event loop and REST API."""
         super(TopologyDetector, self).start()
 
-        # Start REST API and monitor as green threads (NOT threading.Thread)
+        # Start REST API as a green thread
         hub.spawn(self._run_rest_api, 8080)
-        hub.spawn(self._monitor_loop)
 
         self._log_event("SYSTEM", "Topology Detector controller started")
         self.logger.info("=== Topology Detector Controller Started ===")
