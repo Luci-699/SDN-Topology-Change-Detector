@@ -1,178 +1,40 @@
-#!/usr/bin/env python3
-"""
-SDN Topology Change Detector
-=============================
-Run:   python3 topo_detect.py
-Then:  sudo mn --topo tree,depth=2,fanout=2 --controller remote,port=6633
-"""
 import eventlet
 eventlet.monkey_patch()
-
-import os, logging
-from datetime import datetime
+import os
 from os_ken.base import app_manager
 from os_ken.controller import ofp_event
 from os_ken.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER, set_ev_cls
 from os_ken.ofproto import ofproto_v1_3
-from os_ken.lib.packet import packet, ethernet, ether_types, arp, ipv4
+from os_ken.lib.packet import packet, ethernet, ether_types
 from os_ken.lib import hub
 from os_ken.base.app_manager import AppManager
 from os_ken import cfg
 
-os.makedirs('logs', exist_ok=True)
-
-
-class TopologyDetector(app_manager.OSKenApp):
-    """MAC learning switch + topology event detection + logging."""
-
+class T(app_manager.OSKenApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
-
-    def __init__(self, *a, **kw):
-        super().__init__(*a, **kw)
-        self.mac_to_port = {}
-        self.switches = {}
-        self.hosts = {}
-        self.events = []
-        self.datapaths = {}
-
-        # File logger
-        self.flog = logging.getLogger('topo_events')
-        self.flog.setLevel(logging.INFO)
-        if not self.flog.handlers:
-            fh = logging.FileHandler('logs/topology_events.log')
-            fh.setFormatter(logging.Formatter('[%(asctime)s] %(message)s'))
-            self.flog.addHandler(fh)
-
-        self._event("SYSTEM", "Controller initialized")
-
-    # ----- Event Logging -----
-    def _event(self, etype, detail, **kw):
-        ts = datetime.now().strftime('%H:%M:%S')
-        self.flog.info(f"{etype}: {detail}")
-        self.events.append({'time': ts, 'type': etype, 'detail': detail, **kw})
-        if len(self.events) > 500:
-            self.events = self.events[-500:]
-        print(f"  [{ts}] {etype}: {detail}", flush=True)
-
-    # ----- Switch Connect -----
+    def __init__(s,*a,**k):
+        super().__init__(*a,**k); s.mac={}
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
-    def switch_features(self, ev):
-        dp = ev.msg.datapath
-        o, p = dp.ofproto, dp.ofproto_parser
-        dpid = dp.id
-
-        # Table-miss flow: send unmatched packets to controller
-        dp.send_msg(p.OFPFlowMod(
-            datapath=dp, priority=0, match=p.OFPMatch(),
-            instructions=[p.OFPInstructionActions(o.OFPIT_APPLY_ACTIONS,
-                [p.OFPActionOutput(o.OFPP_CONTROLLER, o.OFPCML_NO_BUFFER)])]))
-
-        self.mac_to_port[dpid] = {}
-        self.datapaths[dpid] = dp
-        self.switches[dpid] = datetime.now().strftime('%H:%M:%S')
-        self._event("SWITCH_UP", f"Switch s{dpid} connected")
-
-    # ----- Switch Disconnect -----
-    @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER])
-    def switch_down(self, ev):
-        dp = ev.datapath
-        dpid = dp.id
-        if dpid in self.switches:
-            reason = getattr(ev, 'reason', 'unknown')
-            # Only log if we're tracking this switch
-            pass  # Dead state handled separately
-
-    # ----- Packet In (MAC Learning) -----
+    def f(s,ev):
+        dp=ev.msg.datapath;o=dp.ofproto;p=dp.ofproto_parser
+        dp.send_msg(p.OFPFlowMod(datapath=dp,priority=0,match=p.OFPMatch(),instructions=[p.OFPInstructionActions(o.OFPIT_APPLY_ACTIONS,[p.OFPActionOutput(o.OFPP_CONTROLLER,o.OFPCML_NO_BUFFER)])]))
+        print(f'SWITCH {dp.id} UP',flush=True)
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
-    def packet_in(self, ev):
-        msg = ev.msg
-        dp = msg.datapath
-        o, p = dp.ofproto, dp.ofproto_parser
-        pin = msg.match['in_port']
-        dpid = dp.id
+    def pi(s,ev):
+        msg=ev.msg;dp=msg.datapath;o=dp.ofproto;p=dp.ofproto_parser;pin=msg.match['in_port']
+        pkt=packet.Packet(msg.data);eth=pkt.get_protocols(ethernet.ethernet)[0]
+        if eth.ethertype==ether_types.ETH_TYPE_LLDP:return
+        s.mac.setdefault(dp.id,{});s.mac[dp.id][eth.src]=pin
+        out=s.mac[dp.id].get(eth.dst,o.OFPP_FLOOD);acts=[p.OFPActionOutput(out)]
+        if out!=o.OFPP_FLOOD:
+            dp.send_msg(p.OFPFlowMod(datapath=dp,priority=1,match=p.OFPMatch(in_port=pin,eth_dst=eth.dst,eth_src=eth.src),instructions=[p.OFPInstructionActions(o.OFPIT_APPLY_ACTIONS,acts)],idle_timeout=60,hard_timeout=120))
+        dp.send_msg(p.OFPPacketOut(datapath=dp,buffer_id=msg.buffer_id,in_port=pin,actions=acts,data=msg.data if msg.buffer_id==o.OFP_NO_BUFFER else None))
 
-        pkt = packet.Packet(msg.data)
-        eth = pkt.get_protocols(ethernet.ethernet)[0]
-
-        # Skip LLDP and IPv6 multicast
-        if eth.ethertype == ether_types.ETH_TYPE_LLDP:
-            return
-        if eth.dst.startswith('33:33:'):
-            return
-
-        src, dst = eth.src, eth.dst
-        self.mac_to_port.setdefault(dpid, {})
-        self.mac_to_port[dpid][src] = pin
-
-        # Discover hosts
-        if src not in self.hosts:
-            ip = None
-            a = pkt.get_protocol(arp.arp)
-            if a:
-                ip = a.src_ip
-            v = pkt.get_protocol(ipv4.ipv4)
-            if v:
-                ip = v.src
-            if ip:
-                self.hosts[src] = {'mac': src, 'ip': ip, 'switch': dpid, 'port': pin}
-                self._event("HOST_FOUND", f"{ip} ({src}) on s{dpid}:{pin}")
-
-        # MAC learning: lookup or flood
-        out = self.mac_to_port[dpid].get(dst, o.OFPP_FLOOD)
-        acts = [p.OFPActionOutput(out)]
-
-        # Install flow for known destinations
-        if out != o.OFPP_FLOOD:
-            dp.send_msg(p.OFPFlowMod(
-                datapath=dp, priority=1,
-                match=p.OFPMatch(in_port=pin, eth_dst=dst, eth_src=src),
-                instructions=[p.OFPInstructionActions(o.OFPIT_APPLY_ACTIONS, acts)],
-                idle_timeout=60, hard_timeout=120))
-
-        # Send packet out
-        data = msg.data if msg.buffer_id == o.OFP_NO_BUFFER else None
-        dp.send_msg(p.OFPPacketOut(
-            datapath=dp, buffer_id=msg.buffer_id,
-            in_port=pin, actions=acts, data=data))
-
-    # ----- Topology Info -----
-    def print_topology(self):
-        print("\n" + "=" * 40)
-        print("  CURRENT TOPOLOGY")
-        print("=" * 40)
-        for dpid, ts in self.switches.items():
-            print(f"  Switch s{dpid} (since {ts})")
-        for mac, h in self.hosts.items():
-            print(f"  Host {h.get('ip', '?')} on s{h['switch']}:{h['port']}")
-        print("=" * 40 + "\n")
-
-
-# ============================================================
-#  Main
-# ============================================================
-if __name__ == '__main__':
-    print("=" * 50)
-    print("  SDN Topology Change Detector")
-    print("=" * 50)
-    print()
-    print("  After this starts, run in another terminal:")
-    print("  sudo mn --topo tree,depth=2,fanout=2 --controller remote,port=6633")
-    print()
-
-    mgr = AppManager.get_instance()
-    mgr.load_apps(['os_ken.controller.ofp_handler'])
-    mgr.applications_cls['TopologyDetector'] = TopologyDetector
-
-    try:
-        cfg.CONF(args=['--ofp-tcp-listen-port=6633'],
-                 project='os_ken', version='1.0')
-    except:
-        pass
-
-    services = mgr.instantiate_apps(**mgr.create_contexts())
-    print("[READY] Controller listening on port 6633\n", flush=True)
-
-    try:
-        hub.joinall(services)
-    except KeyboardInterrupt:
-        print("\nController stopped.")
+mgr=AppManager.get_instance()
+mgr.load_apps(['os_ken.controller.ofp_handler'])
+mgr.applications_cls['T']=T
+try:cfg.CONF(args=['--ofp-tcp-listen-port=6633'],project='os_ken',version='1.0')
+except:pass
+services=mgr.instantiate_apps(**mgr.create_contexts())
+print('READY on 6633',flush=True)
+hub.joinall(services)
