@@ -88,6 +88,8 @@ mininet> pingall
 ```
 All hosts can communicate through the SDN controller.
 
+![Full connectivity - pingall 0% dropped](screenshots/full_demo.png)
+
 ### Scenario 2: Link Failure Detection
 ```
 mininet> link s1 s2 down
@@ -122,23 +124,20 @@ SWITCH 2 UP      ← Switch s2 connected
 SWITCH 3 UP      ← Switch s3 connected
 ```
 
+![Controller showing switches connected](screenshots/controller_switches.png)
+
+## Web Dashboard
+The project includes a monitoring dashboard accessible at `http://127.0.0.1:9090`.
+
+![Dashboard showing topology events](screenshots/dashboard.png)
+
 ## Project Structure
 ```
 orange-project/
 ├── start_controller.sh          # Main launcher script
 ├── topo_detect.py               # Controller source code
-├── controller/
-│   ├── __init__.py
-│   ├── topology_detector.py     # Full controller module
-│   └── simple_switch.py         # Basic L2 switch
-├── topology/
-│   ├── __init__.py
-│   └── custom_topo.py           # Custom ring topology
 ├── logs/
 │   └── topology_events.log      # Event log file
-├── tests/
-│   ├── test_connectivity.sh     # Connectivity test
-│   └── test_topo_change.sh      # Topology change test
 ├── screenshots/                 # Demo screenshots
 ├── requirements.txt
 └── README.md
