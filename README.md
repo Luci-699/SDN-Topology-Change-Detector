@@ -126,11 +126,6 @@ SWITCH 3 UP      ← Switch s3 connected
 
 ![Controller showing switches connected](screenshots/controller_switches.png)
 
-## Web Dashboard
-The project includes a monitoring dashboard accessible at `http://127.0.0.1:9090`.
-
-![Dashboard showing topology events](screenshots/dashboard.png)
-
 ## Project Structure
 ```
 orange-project/
