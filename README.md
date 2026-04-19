@@ -126,11 +126,26 @@ SWITCH 3 UP      ← Switch s3 connected
 
 ![Controller showing switches connected](screenshots/controller_switches.png)
 
+## Web Dashboard
+A live monitoring dashboard is included that reads controller logs and displays topology status.
+
+### Terminal 3 — Start Dashboard
+```bash
+python3 dashboard.py
+```
+Open `http://127.0.0.1:9090` in your browser.
+
+The dashboard shows:
+- **Switch/Host/Link counts** — live stats
+- **Network Topology** — visual tree diagram
+- **Event Log** — all topology events with auto-refresh (3s)
+
 ## Project Structure
 ```
 orange-project/
 ├── start_controller.sh          # Main launcher script
 ├── topo_detect.py               # Controller source code
+├── dashboard.py                 # Live web dashboard (port 9090)
 ├── logs/
 │   └── topology_events.log      # Event log file
 ├── screenshots/                 # Demo screenshots
